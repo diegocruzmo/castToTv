@@ -11,19 +11,21 @@
       cursor: pointer;
     }
   </style>
-  <!-- Carga API de YouTube y Cast -->
+  <!-- Carga las APIs necesarias -->
   <script src="https://www.youtube.com/iframe_api"></script>
   <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js"></script>
 </head>
 
 <body>
-  <button id="castButton" onclick="startCasting()">TRANSMITIR AL TV ??</button>
+  <button id="castButton" onclick="startCasting()">TRANSMITIR AL TV 🔴</button>
   <div id="player"></div>
 
   <script>
-    const videoId = 'dQw4w9WgXcQ';
+    const videoId = 'dQw4w9WgXcQ'; // ID de Rick Astley
     let player;
+    let isPlayerReady = false; // Bandera para verificar estado
 
+    // Inicializa el reproductor
     function onYouTubeIframeAPIReady() {
       player = new YT.Player('player', {
         height: '360',
@@ -31,16 +33,41 @@
         videoId: videoId,
         playerVars: {
           enablejsapi: 1,
-          origin: 'https://radiant-meringue-54f2df.netlify.app'
+          origin: 'https://elegant-puppy-765565.netlify.app/'
+        },
+        events: {
+          'onReady': () => {
+            isPlayerReady = true;
+            console.log("Reproductor listo ✅");
+          }
         }
       });
     }
 
+    // Función para iniciar Cast
     function startCasting() {
-      if (window.chrome?.cast?.isAvailable) {
-        player.cast.castVideo();
-      } else {
-        alert("Habilita Google Cast en Chrome o usa modo normal (no inc�gnito).");
+      try {
+        // Verifica que el reproductor esté listo
+        if (!isPlayerReady) {
+          alert("Espera a que el reproductor cargue ⏳");
+          return;
+        }
+
+        // Verifica la API de Cast
+        if (!window.chrome?.cast?.isAvailable) {
+          alert("Habilita Google Cast en Chrome o usa modo normal (no incógnito).");
+          return;
+        }
+
+        // Inicia la transmisión
+        if (player.cast) {
+          player.cast.castVideo();
+        } else {
+          console.error("player.cast no está disponible");
+          alert("Actualiza Chrome o verifica la URL (debe ser HTTPS).");
+        }
+      } catch (error) {
+        console.error("Error crítico:", error);
       }
     }
   </script>
