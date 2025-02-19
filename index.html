@@ -2,7 +2,7 @@
 <html>
 
 <head>
-  <title>Reproductor Corregido</title>
+  <title>Reproductor YouTube + Cast (Corregido)</title>
   <style>
     #castButton {
       background: #ff0000;
@@ -17,15 +17,15 @@
 </head>
 
 <body>
-  <button id="castButton" onclick="startCasting()">TRANSMITIR AL TV 🔴</button>
+  <button id="castButton" onclick="initializeCast()">TRANSMITIR AL TV 🔴</button>
   <div id="player"></div>
 
   <script>
     const videoId = 'dQw4w9WgXcQ'; // ID de Rick Astley
     let player;
-    let isPlayerReady = false; // Bandera para verificar estado
+    let castSession = null;
 
-    // Inicializa el reproductor
+    // 1. Inicializa el reproductor de YouTube
     function onYouTubeIframeAPIReady() {
       player = new YT.Player('player', {
         height: '360',
@@ -33,41 +33,64 @@
         videoId: videoId,
         playerVars: {
           enablejsapi: 1,
-          origin: 'https://elegant-puppy-765565.netlify.app/'
-        },
-        events: {
-          'onReady': () => {
-            isPlayerReady = true;
-            console.log("Reproductor listo ✅");
-          }
+          origin: window.location.origin // Usa tu URL de Netlify
         }
       });
     }
 
-    // Función para iniciar Cast
-    function startCasting() {
+    // 2. Inicializa la API de Cast
+    function initializeCast() {
+      if (!chrome.cast || !chrome.cast.isAvailable) {
+        alert("Actualiza Chrome o no uses modo incógnito.");
+        return;
+      }
+
+      const sessionRequest = new chrome.cast.SessionRequest(
+        chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID
+      );
+
+      const apiConfig = new chrome.cast.ApiConfig(
+        sessionRequest,
+        session => {
+          castSession = session;
+          startCasting();
+        },
+        receiverAvailability => {
+          if (receiverAvailability === chrome.cast.ReceiverAvailability.AVAILABLE) {
+            console.log("Dispositivo Cast detectado ✅");
+          }
+        }
+      );
+
+      // Inicializa la API de forma asíncrona
+      chrome.cast.initialize(
+        apiConfig,
+        () => console.log("API de Cast inicializada ✅"),
+        error => console.error("Error al inicializar Cast:", error)
+      );
+    }
+
+    // 3. Función para transmitir el video
+    async function startCasting() {
       try {
-        // Verifica que el reproductor esté listo
-        if (!isPlayerReady) {
-          alert("Espera a que el reproductor cargue ⏳");
-          return;
+        if (!castSession) {
+          throw new Error("Sesión Cast no iniciada");
         }
 
-        // Verifica la API de Cast
-        if (!window.chrome?.cast?.isAvailable) {
-          alert("Habilita Google Cast en Chrome o usa modo normal (no incógnito).");
-          return;
-        }
+        const mediaInfo = new chrome.cast.media.MediaInfo(
+          `https://www.youtube.com/watch?v=${videoId}`,
+          'video/youtube'
+        );
 
-        // Inicia la transmisión
-        if (player.cast) {
-          player.cast.castVideo();
-        } else {
-          console.error("player.cast no está disponible");
-          alert("Actualiza Chrome o verifica la URL (debe ser HTTPS).");
-        }
+        const request = new chrome.cast.media.LoadRequest(mediaInfo);
+
+        // Transmite el video
+        await castSession.loadMedia(request);
+        console.log("¡Transmisión exitosa! 📡");
+
       } catch (error) {
-        console.error("Error crítico:", error);
+        console.error("Error al transmitir:", error);
+        alert("Error: " + error.message);
       }
     }
   </script>
