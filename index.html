@@ -2,30 +2,47 @@
 <html>
 
 <head>
-  <title>Reproductor YouTube + Cast (Corregido)</title>
+  <title>Reproductor YouTube + Google Cast</title>
   <style>
     #castButton {
       background: #ff0000;
       color: white;
-      padding: 15px;
+      padding: 15px 30px;
+      border: none;
+      border-radius: 25px;
       cursor: pointer;
+      font-size: 18px;
+      margin: 20px;
+      transition: background 0.3s;
+    }
+
+    #castButton:hover {
+      background: #cc0000;
+    }
+
+    #player {
+      width: 640px;
+      height: 360px;
+      margin: 20px;
     }
   </style>
-  <!-- Carga las APIs necesarias -->
-  <script src="https://www.youtube.com/iframe_api"></script>
-  <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js"></script>
 </head>
 
 <body>
-  <button id="castButton" onclick="initializeCast()">TRANSMITIR AL TV 🔴</button>
+  <button id="castButton">TRANSMITIR AL TV 🔴</button>
   <div id="player"></div>
 
+  <!-- API de YouTube -->
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <!-- API de Google Cast -->
+  <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js"></script>
+
   <script>
-    const videoId = 'dQw4w9WgXcQ'; // ID de Rick Astley
+    const videoId = 'dQw4w9WgXcQ'; // ID del video
     let player;
     let castSession = null;
 
-    // 1. Inicializa el reproductor de YouTube
+    // 1. Configuración inicial del reproductor YouTube
     function onYouTubeIframeAPIReady() {
       player = new YT.Player('player', {
         height: '360',
@@ -33,64 +50,130 @@
         videoId: videoId,
         playerVars: {
           enablejsapi: 1,
-          origin: 'https://elegant-puppy-765565.netlify.app/'
+          origin: window.location.origin,
+          autoplay: 0
+        },
+        events: {
+          'onReady': onPlayerReady,
+          'onStateChange': onPlayerStateChange
         }
       });
     }
 
-    // 2. Inicializa la API de Cast
-    function initializeCast() {
+    function onPlayerReady(event) {
+      console.log("Reproductor YouTube listo ✅");
+      initializeCastApi();
+    }
+
+    // 2. Configuración de Google Cast
+    function initializeCastApi() {
       if (!chrome.cast || !chrome.cast.isAvailable) {
-        alert("Actualiza Chrome o no uses modo incógnito.");
+        console.error("API Cast no disponible");
         return;
       }
 
-      const sessionRequest = new chrome.cast.SessionRequest(
-        chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID
-      );
+      const applicationID = chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID;
+      const sessionRequest = new chrome.cast.SessionRequest(applicationID);
 
       const apiConfig = new chrome.cast.ApiConfig(
         sessionRequest,
-        session => {
-          castSession = session;
-          startCasting();
-        },
-        receiverAvailability => {
-          if (receiverAvailability === chrome.cast.ReceiverAvailability.AVAILABLE) {
-            console.log("Dispositivo Cast detectado ✅");
-          }
-        }
+        sessionListener,
+        receiverListener
       );
 
-      // Inicializa la API de forma asíncrona
-      chrome.cast.initialize(
-        apiConfig,
-        () => console.log("API de Cast inicializada ✅"),
-        error => console.error("Error al inicializar Cast:", error)
-      );
+      chrome.cast.initialize(apiConfig, onCastInitSuccess, onCastInitError);
     }
 
-    // 3. Función para transmitir el video
-    async function startCasting() {
-      try {
-        if (!castSession) {
-          throw new Error("Sesión Cast no iniciada");
-        }
+    function onCastInitSuccess() {
+      console.log("API Cast inicializada con éxito ✅");
+      updateCastButton();
+    }
 
+    function onCastInitError(error) {
+      console.error("Error inicializando Cast:", error);
+    }
+
+    // 3. Manejadores de eventos Cast
+    function sessionListener(session) {
+      castSession = session;
+      updateCastButton();
+      console.log("Sesión Cast establecida:", session);
+    }
+
+    function receiverListener(availability) {
+      if (availability === 'available') {
+        console.log("Dispositivos Cast detectados ✅");
+        updateCastButton();
+      }
+    }
+
+    // 4. Control de transmisión
+    document.getElementById('castButton').addEventListener('click', () => {
+      if (!castSession) {
+        chrome.cast.requestSession(
+          session => {
+            castSession = session;
+            playOnCastDevice();
+          },
+          error => {
+            console.error("Error al solicitar sesión:", error);
+          }
+        );
+      } else {
+        stopCasting();
+      }
+    });
+
+    async function playOnCastDevice() {
+      try {
         const mediaInfo = new chrome.cast.media.MediaInfo(
           `https://www.youtube.com/watch?v=${videoId}`,
           'video/youtube'
         );
 
         const request = new chrome.cast.media.LoadRequest(mediaInfo);
+        request.autoplay = true;
 
-        // Transmite el video
         await castSession.loadMedia(request);
-        console.log("¡Transmisión exitosa! 📡");
+        console.log("Medio cargado exitosamente 📡");
+        updateCastButton();
 
       } catch (error) {
-        console.error("Error al transmitir:", error);
-        alert("Error: " + error.message);
+        console.error("Error al cargar medio:", error);
+      }
+    }
+
+    function stopCasting() {
+      if (castSession) {
+        castSession.stop(
+          () => {
+            console.log("Transmisión detenida");
+            castSession = null;
+            updateCastButton();
+          },
+          error => {
+            console.error("Error al detener:", error);
+          }
+        );
+      }
+    }
+
+    // 5. Actualización de interfaz
+    function updateCastButton() {
+      const castButton = document.getElementById('castButton');
+      if (castSession) {
+        castButton.textContent = '⏹ Detener transmisión';
+        castButton.style.backgroundColor = '#444';
+      } else {
+        castButton.textContent = '🔴 Transmitir al TV';
+        castButton.style.backgroundColor = '#ff0000';
+      }
+    }
+
+    // 6. Control de estado del reproductor
+    function onPlayerStateChange(event) {
+      if (event.data === YT.PlayerState.ENDED && castSession) {
+        stopCasting();
       }
     }
   </script>
